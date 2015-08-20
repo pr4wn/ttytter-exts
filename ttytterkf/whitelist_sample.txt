@@ -1,0 +1,8 @@
+# Whitelist Rules can be any legal perl conditon and will
+# override killfile rules.
+# For example,
+
+$ref->{user}->{screen_name} =~ /pr4wn/i
+$ref->{user}->{screen_name} =~ /ttytter/i
+
+# will display all tweets by @pr4wn and @ttytter regardless.

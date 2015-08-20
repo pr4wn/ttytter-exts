@@ -1,0 +1,34 @@
+# $HOME/.ttytterkillfile
+# Rules can be any legal perl conditon, so fill your boots.
+# Use Data::Dumper to familiarize yourself with the $ref hash
+# or read the Twitter API documentation for the structure of
+# tweets.
+
+# Some example rules
+
+# Some simple text filters
+
+$ref->{text} =~ /Please RT/i
+$ref->{text} =~ /pl[s|z] RT/i
+$ref->{text} =~ /[@|#]TheWantApp/i 
+$ref->{text) =~ /[@|#]getglue/i
+$ref->{text} =~/#nowplaying/i
+$ref->{text} =~ /[#|@]klout/i
+
+# Top suggestions from @DougieLawson
+
+$ref->{text} =~/foursquare/i
+$ref->{text} =~/paper\.li/i
+$ref->{text} =~/myfitnesspal/i
+
+# You can also filter out by twitter client.  Horoscopes, for example.
+
+$ref->{source} =~ /Twittascope/
+
+# Let's filter out some football related stuff from @pr4wn (sensible).
+
+( $ref->{user}->{screen_name} =~ /^pr4wn$/ && $ref->{text} =~ /#cpfc/i )
+( $ref->{user}->{screen_name} =~ /^pr4wn$/ && $ref->{text} =~ /GTFI/i )
+
+# That's all there is to it.
+# @pr4wn

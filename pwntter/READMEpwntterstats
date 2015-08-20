@@ -1,0 +1,78 @@
+              pwntterstats - a report extension for pwntter
+
+
+To run, you need a version of pwntter <http://code.google.com/p/pwntter/>
+installed and collecting data somewhere.
+
+pwntterstats uses the following CPAN modules:
+
+DBI
+Date::Manip
+Date::Format
+FileHandle
+Time::Local
+Encode
+HTML::Entities
+Number::Format
+Getopt::Long
+
+Usage: pwntterstats [options] 
+
+--usage, --help, -h, -?       	Print this message
+
+--from, -f                    	From date YYYYMMDD [yesterday]
+
+--to, -t                    	To date YYYYMMDD   [yesterday)]
+
+--output, -o			Output filename
+
+--title, -e			Report title       [pwntterstats]
+
+--width, -w			Report Width       [72]
+
+--html, -l                    	Simple HTML output
+
+--all, -a			Runs all reports except the hashtag cloud 
+				report unless --html arguent is used
+--dow, -w			Day of week report
+
+--hashtag, -ht			Hashtag report
+
+--client, -c			Twitter client report
+
+--user, -u			User report
+
+--hours, -ho			Busy/quiet hours report
+
+--days, -d			Busy/quiet day report
+
+--cloud, -cl			Run a hashtag cloud report in html
+				The rest of the report will be in html too.
+--cloudwords			Maximum number of words in hashtag cloud [50]
+
+--nocss				Do not print CSS code with cloud report
+
+--stopwords, -sw		Filename of wordlist to ignore in word cloud
+
+example:
+  
+pwntterstats --from 20110701 --to 20110731 --all --html --title --stopwords /etc/pwntter/stopwords.txt "July 2011 Statistics" --output /var/www/stats/201107.html 
+
+
+some sample daily, weekly, monthly and yearly reporting shell scripts are 
+enclosed:
+
+pwntterdailystats.sh   #runs stats for yesterday  
+pwntterweeklystats.sh  #runs stats for last week
+pwnttermonthlystats.sh #runs stats for previous month 
+pwntteryearlystats.sh  #runs stats for previous year
+
+You could use crontb something like this:
+
+# m h  dom mon dow   command
+0 1 1 * * /usr/local/bin/pwnttermonthlystats.sh
+10 1 1 1 * /usr/local/bin/pwntteryearlystats.sh
+20 1 * * 0 /usr/local/bin/pwntterweeklystats.sh
+30 1 * * * /usr/local/bin/pwntterdailystats.sh
+
+

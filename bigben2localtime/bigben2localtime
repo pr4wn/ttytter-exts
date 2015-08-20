@@ -1,0 +1,65 @@
+#######################################################################
+#
+# Copyright 2012, prawn.  sean dot prawn at gmail dot com [@pr4wn]
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#######################################################################
+
+######################## bigben2localtime #############################
+#                        ttytter kill file
+# A TTYyter extension to show and hourly timestamp in your twitter 
+# stream.
+# 
+# Needs CPAN module Date::Manip
+#  
+#######################################################################
+
+use Date::Manip;
+
+# Simply follow @big_ben_clock or @coucou_suisse and this will replace
+# the tweet text with a localtime conversion of the tweet timestamp.
+# @pr4wn
+
+sub bb_date_format {
+  my $date = shift;
+  my $s;
+
+  $s = substr( $date, 8, 5 ); # hh:mm:ss
+
+  return( $s );
+
+}
+
+$handle = sub {
+
+my $ref = shift;
+
+my $ESC = pack("C", 27);
+my $BOLDON = ($ansi) ? "${ESC}[1;31m" : '';
+my $BOLDOFF = ($ansi) ? "${ESC}[0m" : '';
+
+if (  $ref->{user}->{screen_name} eq 'big_ben_clock' ||  
+      $ref->{user}->{screen_name} eq 'coucou_suisse' ) {
+    
+  my $created_at = ParseDate($ref->{'created_at'});
+  $ref->{text} = $BOLDON . bb_date_format($created_at) . $BOLDOFF;
+
+}
+
+&defaulthandle ( $ref );
+
+return 1;
+
+}

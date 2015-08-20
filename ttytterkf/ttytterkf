@@ -1,0 +1,189 @@
+#######################################################################
+#
+# Copyright 2012, prawn.  sean dot prawn at gmail dot com [@pr4wn]
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#######################################################################
+
+############################ ttytterkf ################################
+#                        ttytter kill file
+#   Extension for TTYyter to filter tweets based on extended rules
+#   
+#######################################################################
+use Data::Dumper;
+my $ext_version = "0.2.1";
+my $kffn = $ENV{HOME} . "/.ttytterkillfile";
+my $wlfn = $ENV{HOME} . "/.ttytterwhitelist";
+
+my @filter_rules = '';
+my @whitelist_rules = '';
+
+my $wl_exists = 0;
+my $kftesting = 0;
+
+load_killfile_rules( $kffn );
+
+# load whitelist if exists.
+if ( -e $wlfn ) { load_whitelist_rules( $wlfn ); $wl_exists = 1; }
+
+############################ Load config file #################################
+sub load_killfile_rules {
+
+  my $kf = shift;
+
+  if ( !open( KILLF, "$kf" ) ) {
+  
+    print "Killfile not found : $kf $!";
+    exit(0);
+ 
+  }
+
+  while ( $config_line = <KILLF> ) {
+    #chomp 'n trim
+    chomp ($config_line);      
+    $config_line =~ s/^\s*//;  
+    $config_line =~ s/\s*$//;   
+
+    if ( ( $config_line !~ /^#/ ) && ( $config_line ne "" ) ) {   
+
+      push( @filter_rules, $config_line );
+      
+      if ( $verbose || $superverbose || $kftesting ) {
+  
+        print "Added rule $config_line\n";
+    
+      }
+
+    }
+
+  }
+
+  close( KILLF );
+
+  return;
+
+}
+
+sub load_whitelist_rules {
+
+  my $wl = shift;
+
+  if ( !open( WHITEF, "$wl" ) ) {
+
+    print "Whitelist not found : $wl $!";
+    exit(0);
+
+  }
+
+  while ( $config_line = <WHITEF> ) {
+    #chomp 'n trim
+    chomp ($config_line);
+    $config_line =~ s/^\s*//;
+    $config_line =~ s/\s*$//;
+
+    if ( ( $config_line !~ /^#/ ) && ( $config_line ne "" ) ) {
+
+      push( @whitelist_rules, $config_line );
+
+      if ( $verbose || $superverbose || $kftesting ) {
+
+        print "Added whitelist rule $config_line\n";
+
+      }
+
+    }
+
+  }
+
+  close( WHITEF );
+
+  return;
+
+}
+
+
+############################# default handle ##################################
+
+$handle = sub {
+
+if ( $superverbose ) {
+
+  print "Extension ttytterkf " . $ext_version . "\n";
+
+}
+
+my $ref = shift;
+
+# Process rules
+if ( $wl_exists ) {
+
+  foreach my $wlrule ( @whitelist_rules ) {
+
+    my $j = eval $wlrule;
+
+    if ( $superverbose ) {
+
+      print 'j = :' . $j . ': whitelist rule = :' . $wlrule .":\n";
+
+    }
+
+    if ( $j == 1 ) {
+
+      if ( $verbose || $superverbose || $kftesting )  {
+
+        print "whitelist RULE MATCHED: $wlrule\n";
+
+      }
+
+      &defaulthandle( $ref ) ;
+      return;
+
+    }
+
+  }
+
+}
+
+foreach my $rule ( @filter_rules ) {
+
+  my $i = eval $rule;
+
+  if ( $superverbose ) {
+
+    print 'i = :' . $i . ': rule = :' . $rule . ":\n"; 
+
+  }
+    
+  if ( $i == 1 ) { 
+
+    if ( $verbose || $superverbose || $kftesting )  {
+      
+      print "RULE MATCHED: $rule\n";
+
+    }
+
+    return; # we have a match, do NOT display tweet. 
+
+  } 
+
+}
+
+&defaulthandle( $ref ); # Display tweet
+
+return 1;  
+
+
+}
+

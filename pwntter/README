@@ -1,0 +1,26 @@
+
+pwntter is an extension for TTYtter http://www.floodgap.com/software/ttytter/ that will dump the stream from TTYtter into MySQL tables.
+
+The project is hosted here:
+
+http://code.google.com/p/pwntter/
+ 
+Installation instructions:
+
+Download and unzip project from the download section.
+
+Create or use an an existing MySQL database and execute the pwntter.sql file. The self-explanatory table names are: users, tweets and direct_messages.
+
+Edit pwntter.pl with hostname, database, userid and password for your MySQL database:
+
+# mysql database config.
+my $host     = "localhost";
+my $db       = "pwntter";
+my $user_id  = "mysqluserid";
+my $password = "mysqlpassword";`
+If they are not already installed, install Perl modules DB, Date::Manip and HTML::Entities.
+
+Run TTYtter with the pwntter extension. For example:
+
+ttytter -exts=pwntter.pl -hold -daemon
+

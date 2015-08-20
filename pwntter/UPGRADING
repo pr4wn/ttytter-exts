@@ -1,0 +1,18 @@
+UPGRADING FROM EARLIER VERSIONS
+
+A bug was spotted by @18is9 in which pwntter would crash when logging
+track items:
+
+DBD::mysql::st execute failed: Column 'user_id' cannot be null at pwntter.pl line 100.
+DBD::mysql::st execute failed: Column 'user_id' cannot be null at pwntter.pl line 100.
+
+The reason for this is the twitter API JSON record is very different when
+displaying a track item to a user stream item.
+
+To accommodate both data structures, I have had to update the database
+scehema for tweets which can be found in the file sql/patch.sql. Run the 
+sql in this file before using the new version of pwntter.
+
+New installations of pwntter can ingnore this. 
+
+@pr4wn

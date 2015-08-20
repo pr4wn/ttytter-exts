@@ -1,0 +1,713 @@
+#!/usr/bin/perl
+#######################################################################
+#
+# Copyright 2011, prawn.  sean dot prawn at gmail dot com
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#######################################################################
+
+########################### pwntterstats ##############################
+#
+#    Extension for pwntter to generate reports from mysql tables.
+#
+#######################################################################
+
+use strict;
+use warnings;
+use DBI;
+use Date::Manip;
+use Date::Format;
+use FileHandle;
+use Time::Local;
+use Encode;
+use HTML::Entities;
+use Number::Format;
+use Getopt::Long;
+use HTML::TagCloud;
+
+# Database Settings
+my $host     = "localhost";
+my $db       = "pwntter";
+my $user_id  = "pwntter";
+my $password = "pwntter";
+
+my $version = "0.4";
+
+my %opt;    #CLI Options
+my $report_width = 72;
+
+my @dow = qw(Sun Mon Tue Wed Thu Fri Sat);
+
+my %stopwords;    # exclude worlist for word cloud.
+
+# Counts and hashes for reporting
+my $row_count = 0;
+my $bytes     = 0;
+my %hour_counts;
+my %day_counts;
+my %dow_counts;
+my %screen_name_counts;
+my %source_counts;
+my %hashtag_counts;
+my %word_counts;
+my %url_counts;
+
+my $fromdate;
+my $todate;
+my @report;    #output lines;
+my @cloudreport; # cloud report lines
+my $report_title;
+my $cloud_words;
+
+my $cloud = HTML::TagCloud->new;
+my $wordcloud = HTML::TagCloud->new;
+GetOptions(
+    \%opt,
+
+    'from|f=s',           # From date
+    'to|t=s',             # To date
+    'title|e=s',          # report title
+    'output|o=s',         # output filename
+    'html|l!',            # simple html output
+    'dow|w!',             # day of week report
+    'all|a!',             # all reports
+    'hashtag|ht!',        # hashtag report
+    'client|c!',          # client report
+    'cloud|cl!',          # cloud report and number of words
+    'cloudwords|cw=n',    # max number of words in cloud
+    'stopwords|sw=s',	  # stopwords file
+    'nocss!',             # only print html with cloud report
+    'user|u!',            # user report
+    'hours|ho!',          # Busy/quiet hours report
+    'days|d!',            # Busy/quiet day reports
+    'help|usage|h|?',     # Help to show all available options.
+    'width|w=i'           # report width
+
+) or die "Error parsing options, try --help";
+
+if ( $opt{'help'} ) { help(); exit 0; }
+
+$fromdate     = defined( $opt{'from'} )  ? $opt{from}  : ParseDate("yesterday");
+$todate       = defined( $opt{'to'} )    ? $opt{to}    : ParseDate("yesterday");
+$report_width = defined( $opt{'width'} ) ? $opt{width} : 72;
+$report_title = defined( $opt{'title'} ) ? $opt{title} : "pwntterstats";
+$cloud_words = defined( $opt{'cloudwords'} ) ? $opt{cloudwords} : 50;
+
+# if no report options are set then set all
+
+if (    ( !$opt{days} )
+    and ( !$opt{hours} )
+    and ( !$opt{user} )
+    and ( !$opt{client} )
+    and ( !$opt{hashtag} )
+    and ( !$opt{cloud} )
+    and ( !$opt{dow} ) )
+{
+
+    $opt{all} = 1;
+
+}
+
+if ( $opt{stopwords} ) {
+    if (-e $opt{stopwords}) {
+        load_stopwords();
+
+    }   
+}
+# if you are generating a hashtag cloud then report MUST be html
+if ( $opt{cloud} ) {
+
+    $opt{html} = 1;
+
+}
+
+# DB Connect
+my $dbh = DBI->connect( "DBI:mysql:database=$db;host=$host",
+    "$user_id", "$password", { 'RaiseError' => 1 } );
+
+$fromdate =
+    substr( $fromdate, 0, 4 ) . '-'
+  . substr( $fromdate, 4, 2 ) . '-'
+  . substr( $fromdate, 6, 2 );
+$todate =
+    substr( $todate, 0, 4 ) . '-'
+  . substr( $todate, 4, 2 ) . '-'
+  . substr( $todate, 6, 2 );
+
+#One query, store in counts and hashes as we go
+my $sql =
+"select id, user_id, screen_name, text, created_at, source, truncated, user_name "
+  . "from tweets where created_at between ? and ?";
+
+$fromdate = $fromdate . " 00:00:00";
+$todate = $todate . " 23:59:59";
+
+my $sth = $dbh->prepare($sql);
+$sth->execute($fromdate, $todate);
+
+my $ref;
+
+my $x = new Number::Format;
+
+# Process query
+while ( $ref = $sth->fetchrow_hashref ) {
+
+    process_hash_tags( $ref->{text} );
+
+    my $s = "";
+
+    # if twitter client is not a href, use plain text
+    if ( !( $s = parse_html( $ref->{source} ) ) ) {
+
+        $s = $ref->{source};
+
+    }
+
+    $source_counts{$s}++;
+    $screen_name_counts{ $ref->{screen_name} }++;
+
+    my $hh = substr( $ref->{created_at}, 11, 2 ) . ":00";
+    my $dt = substr( $ref->{created_at}, 0,  10 );
+    my $yy = substr( $ref->{created_at}, 0,  4 );
+    my $mm = substr( $ref->{created_at}, 5,  2 );
+    my $dd = substr( $ref->{created_at}, 8,  2 );
+
+    my $time = timelocal( 0, 0, 0, $dd, $mm - 1, $yy );
+    my $wday = ( localtime($time) )[6];
+
+    $hour_counts{$hh}++;
+    $day_counts{$dt}++;
+    $dow_counts{ $dow[$wday] }++;
+
+    $bytes += length( $ref->{text} );
+    $row_count++;
+
+}
+
+#Report
+
+
+push( @report, centre("$report_title") );
+push( @report, "" );
+push( @report, "" );
+push( @report, "Run on:..........  " . time2str( "%C", time ) );
+push( @report, "Stats from:......  " . UnixDate( $fromdate, "%d-%m-%Y" ) );
+push( @report, "Stats to:........  " . UnixDate( $todate, "%d-%m-%Y" ) );
+push( @report, "Total tweets:....  " . $x->format_number($row_count) );
+push( @report, "Bytes tweeted:...  " . $x->format_number($bytes) );
+push( @report, "" );
+
+my @source =
+  sort { $source_counts{$b} <=> $source_counts{$a} } keys %source_counts;
+my $i = 1;
+
+if ( ( $opt{client} ) or ( $opt{all} ) ) {
+
+
+    push( @report, centre("Tweets per Twitter client") );
+    push( @report, "" );
+
+    foreach my $key (@source) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $source_counts{$key} ) );
+        $i++;
+
+    }
+
+    push( @report, "" );
+
+}
+
+if ( ( $opt{user} ) or ( $opt{all} ) ) {
+
+
+    push( @report, centre("Busiest users in feed") );
+    push( @report, "" );
+
+    my @names =
+      sort { $screen_name_counts{$b} <=> $screen_name_counts{$a} }
+      keys %screen_name_counts;
+    $i = 1;
+
+    foreach my $key (@names) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $screen_name_counts{$key} ) );
+        $i++;
+
+        if ( $i > 20 ) {
+            last;
+        }
+
+    }
+
+    push( @report, "" );
+
+}
+
+if ( ( $opt{hashtag} ) or ( $opt{all} ) ) {
+
+    push( @report, centre("Most popular hashtags in feed") );
+    push( @report, "" );
+
+    my @hashtags =
+      sort { $hashtag_counts{$b} <=> $hashtag_counts{$a} } keys %hashtag_counts;
+    $i = 1;
+
+    foreach my $key (@hashtags) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $hashtag_counts{$key} ) );
+        $i++;
+
+        if ( $i > 20 ) {
+            last;
+        }
+
+    }
+
+    push( @report, "" );
+
+}
+
+if ( ( $opt{hashtag} ) or ( $opt{all} ) ) {
+
+    push( @report, centre("Most popular words in feed") );
+    push( @report, "" );
+
+    my @words =
+      sort { $word_counts{$b} <=> $word_counts{$a} } keys %word_counts;
+    $i = 1;
+
+    foreach my $key (@words) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $word_counts{$key} ) );
+        $i++;
+
+        if ( $i > 20 ) {
+            last;
+        }
+
+    }
+
+    push( @report, "" );
+
+}
+
+if ( $opt{cloud} or $opt{all}) {
+
+    push( @cloudreport, "<p>Hashtag cloud (Maximum $cloud_words words)</p>" );
+    push( @cloudreport, "" );
+    my @hashtags =
+      sort { $hashtag_counts{$b} <=> $hashtag_counts{$a} } keys %hashtag_counts;
+    $i = 1;
+
+    foreach my $key (@hashtags) {
+        my $s = $cloud->add_static( $key, $hashtag_counts{$key} )
+
+    }
+
+    if ( !$opt{nocss} ) {
+
+        push( @cloudreport, $cloud->html_and_css($cloud_words) );
+
+    }
+    else {
+
+        push( @cloudreport, $cloud->html($cloud_words) );
+
+    }
+    push( @cloudreport, "<p></p><p>Word cloud (Maximum $cloud_words words)</p>" );
+    push( @cloudreport, "" );
+
+    my @words =
+      sort { $word_counts{$b} <=> $word_counts{$a} } keys %word_counts;
+    $i = 1;
+
+   foreach my $key (@words) {
+        my $s = $wordcloud->add_static( $key, $word_counts{$key} )
+
+    }
+
+    if ( !$opt{nocss} ) {
+
+        push( @cloudreport, $wordcloud->html_and_css($cloud_words) );
+
+    }
+    else {
+
+        push( @cloudreport, $wordcloud->html($cloud_words) );
+
+    }
+
+    push( @cloudreport, "" );
+
+}
+
+if ( ( $opt{hours} ) or ( $opt{all} ) ) {
+
+    push( @report, centre("Busiest hours in feed") );
+    push( @report, "" );
+
+    my @hours =
+      sort { $hour_counts{$b} <=> $hour_counts{$a} } keys %hour_counts;
+    $i = 1;
+
+    foreach my $key (@hours) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $hour_counts{$key} ) );
+        $i++;
+
+        if ( $i > 5 ) {
+            last;
+        }
+
+    }
+
+    push( @report, "" );
+    push( @report, centre("Quietest hours in feed") );
+    push( @report, "" );
+
+    @hours =
+      reverse sort { $hour_counts{$b} <=> $hour_counts{$a} } keys %hour_counts;
+    $i = 1;
+
+    foreach my $key (@hours) {
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $hour_counts{$key} ) );
+        $i++;
+
+        if ( $i > 5 ) {
+            last;
+        }
+
+    }
+
+    push( @report, "" );
+
+}
+
+if ( ( $opt{days} ) or ( $opt{all} ) ) {
+
+    push( @report, centre("Busiest days in feed") );
+    push( @report, "" );
+
+    my @days = sort { $day_counts{$b} <=> $day_counts{$a} } keys %day_counts;
+    $i = 1;
+
+    foreach my $key (@days) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $day_counts{$key} ) );
+        $i++;
+
+        if ( $i > 5 ) {
+            last;
+        }
+
+    }
+
+    push( @report, "" );
+    push( @report, centre("Quietest days in feed") );
+    push( @report, "" );
+
+    @days =
+      reverse sort { $day_counts{$b} <=> $day_counts{$a} } keys %day_counts;
+    $i = 1;
+
+    foreach my $key (@days) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $day_counts{$key} ) );
+        $i++;
+
+        if ( $i > 5 ) {
+            last;
+        }
+
+    }
+
+    push( @report, "" );
+
+}
+
+if ( ( $opt{dow} ) or ( $opt{all} ) ) {
+
+    push( @report, centre("Posts by day of week in feed") );
+    push( @report, "" );
+
+    my @dows = sort { $dow_counts{$b} <=> $dow_counts{$a} } keys %dow_counts;
+    $i = 1;
+
+    foreach my $key (@dows) {
+
+        push( @report,
+            sprintf "%3d. %s: %8s",
+            $i,
+            dotline( $report_width - 25, $key ),
+            $x->format_number( $dow_counts{$key} ) );
+        $i++;
+
+    }
+
+}
+
+push( @report, "" );
+
+my $fh;
+
+# print Report
+if ( $opt{output} ) {
+
+    $fh = FileHandle->new(">$opt{output}")
+      or die "Cannot open file for output $!";
+
+}
+
+if ( $opt{html} ) {
+
+    print_line("<code>");
+
+}
+
+for my $i ( 0 .. $#report ) {
+
+    if ( $opt{html} ) {
+        
+        my $s = encode_entities( decode( "utf-8", $report[$i] ) ) . "</br>\n";
+        $s =~ s/ /\&nbsp;/g;
+        print_line($s);
+
+    }
+    else {
+
+        print_line( $report[$i] . "\n" );
+
+    }
+
+}
+
+if ( $opt{html} ) {
+
+    print_line("</code>\n<p>");
+
+}
+
+if ( ( $opt{cloud} ) or ( $opt{all} ) and ( $opt{html} ) ) {
+
+    for my $i ( 0 .. $#cloudreport ) {
+
+        print_line( $cloudreport[$i] . "\n" );
+
+    }
+
+    print_line("</p>");
+}
+
+if ( $opt{html}) {
+
+    print_line("<p><a href=\"http://code.google.com/p/pwntter/\" rel=\"nofollow\">Generated by pwntterstats version $version</a></p>");
+
+} else {
+
+    print_line("Generated by pwntterstats version $version");
+
+}
+
+if ( $opt{output} ) {
+
+    undef $fh;
+    print "Written to $opt{output}\n";
+}
+
+print "\n";
+
+#done
+
+sub print_line {
+
+    my $s = shift;
+
+    if ( $opt{output} ) {
+
+        print $fh $s;
+
+    } 
+    else {
+
+        print $s;
+
+    }
+
+}
+
+sub process_hash_tags {
+
+    my $s = shift;
+    my @a = split( / /, $s );
+    $s =~ s/^["']//;
+    for my $i ( 0 .. $#a ) {
+
+        if ( $a[$i] =~ m/^\#/ ) {
+
+            $a[$i] =~ s/\W+$//;
+
+            if ( length( $a[$i] ) > 1 ) {
+                $hashtag_counts{ lc( $a[$i] ) }++;
+            }
+
+        }
+        elsif ($a[$i] =~ m/(http|ftp|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&amp;:\/~\+#]*[\w\-\@?^=%&amp;\/~\+#])?/) {
+                     $url_counts{( $a[$i] ) }++;
+        } 
+	elsif ($a[$i] !~ m/^[@|#]/) {
+
+            $a[$i] =~ s/\W+$//;
+            $a[$i] =~ s/^[[:punct:]]//g;
+ 
+            if (length( $a[$i] ) > 1) {
+              if (! defined $stopwords{ lc( $a[$i] ) } ) {
+                $word_counts{ lc( $a[$i] ) }++;
+              }
+            }
+	
+        }
+      
+    }
+}
+
+sub help {
+
+    print <<"END USAGE INFO";
+
+Usage: $0 [options] 
+--usage, --help, -h, -?       	Print this message
+--from, -f                    	From date YYYYMMDD [yesterday]
+--to, -t                    	To date YYYYMMDD   [yesterday)]
+--output, -o			Output filename
+--title, -e			Report title       [pwntterstats]
+--width, -w			Report Width       [72]
+--html, -l                    	Simple HTML output
+--all, -a			Runs all reports except the hashtag cloud 
+				report unless --html arguent is used
+--dow, -w			Day of week report
+--hashtag, -ht			Hashtag report
+--client, -c			Twitter client report
+--user, -u			User report
+--hours, -ho			Busy/quiet hours report
+--days, -d			Busy/quiet day report
+--cloud, -cl			Run a hashtag cloud report in html
+				The rest of the report will be in html too.
+--cloudwords			Maximum number of words in hashtag cloud [50]
+--nocss				Do not print CSS code with cloud report
+--stopwords, -sw		Filename of wordlist to ignore in word cloud
+example:
+  
+$0 --from 20110701 --to 20110731 --all --html --title --stopwords /etc/pwntter/stopwords.txt "July 2011 Statistics" --output /var/www/stats/201107.html 
+
+Defaults are shown [like this]
+END USAGE INFO
+}
+#########################################################
+# All this to extract twitter clients from a href links.#
+#########################################################
+sub parse_html {
+
+    package MyParser;
+    my $html = shift;
+    use base qw(HTML::Parser);
+
+    our ( $text_elements, $start_tags, $end_tags) = ("", "", "");
+
+    sub text {
+        my ( $self, $text ) = @_;
+        $text_elements = $text;
+    }
+
+    package main;
+
+    my $parser = MyParser->new;
+    $parser->parse($html);
+    $html = '';
+    return ($text_elements);
+}
+#########################################################
+#               dotline and centre are                  #
+# Shamelessly taken from ngstats2 written by Cab.       #
+#<http://www.rosbif.org/perlscripts/ngstats2/index.html>#
+#########################################################
+# dotline: Take the string and pad it right with dots   #
+#########################################################
+sub dotline {
+    my ( $len, $line ) = @_;
+    my $fmt = sprintf( "%%.%ds%%s", $len );
+    return sprintf( $fmt,
+        $line, '.' x ( $len - length( decode( "utf8", ($line) ) ) ) );
+}
+####################################################
+# centre: Centre the argument string and return it #
+####################################################
+
+sub centre {
+    my @lines = split( "\n", join( '', @_ ) );
+    my @formatted;
+    my $i = 0;
+    foreach my $line (@lines) {
+        $formatted[ $i++ ] =
+          ' ' x ( ( $report_width - 12 - length($line) ) / 2 ) . $line;
+    }
+    return join( "\n", @formatted );
+}
+
+sub load_stopwords {
+
+    $fh = FileHandle->new("<$opt{stopwords}")
+    or die "Cannot open file for input $!";
+
+    while (my $s = $fh->getline()) {
+      chomp($s);
+      if (length($s) > 0) {
+          $stopwords{lc($s)} = 1;
+      }
+    }
+   undef $fh;
+}

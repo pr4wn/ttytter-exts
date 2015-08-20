@@ -1,0 +1,34 @@
+              ttytterkf - a killfile extension for TTYtter
+
+
+Please read the TTYtter documentation on how to run extensions first.
+
+ttytterkf performs an extended function to the -filter directive that is provided by TTYtter.
+
+The filter function is limited in that it can only filter on tweet text. 
+ttytterkf addresses this by allowing you to set any rule using a wider range of
+data.
+
+                             TO RUN
+
+Either:
+
+from the command line: ttytter -exts=/full/path/to/ttytterkf
+
+or
+
+edit your rc file (usually ~/.ttytterrc) thus:
+
+exts=/full/path/to/ttytterkf
+
+I have incuded a sample rules file to get you going. [sample_rules.txt]
+as well as a samples whitelist [whitelist_sample.txt] which will override any
+killfile conditions.
+
+The default rules file is $HOME/.ttytterkillfile 
+The default whitelist file is $HOME/.ttytterwhitelist 
+
+To use different filenames, you will have to edit the $kffn and $wlfn variables
+in ttytterkf.
+ 
+@pr4wn
